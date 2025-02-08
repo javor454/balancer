@@ -1,0 +1,4 @@
+{
+    "strategy": "single-client",
+    "capacity": 100
+} 
