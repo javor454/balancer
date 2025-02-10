@@ -7,7 +7,7 @@ import (
 	"net/http"
 
 	"github.com/google/uuid"
-	"github.com/javor454/balancer/server"
+	"github.com/javor454/balancer/internal/server"
 )
 
 // Strategy interface defines the methods that each balancing strategy must implement

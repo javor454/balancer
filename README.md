@@ -21,3 +21,13 @@ In any case, the balancer must ensure that the number of requests in process at 
 
 ## Single Client Balancer
 Serves only one client at a time, other clients are enqueued. As soon as the client is done, he must deregister himself for the next client in the queue to be served. If there is no client in the queue, the balancer will wait for a client to register. In case the client is not active for 1 minute, he will be deregistered automatically.
+
+# TODOs
+- strategies:
+    - [x] single-client
+    - [ ] round-robin
+    - [ ] batch
+    - [ ] weighted
+- [ ] Add tests
+- [ ] Add visualisation of application state?
+- [ ] Add websockets to get live updates?

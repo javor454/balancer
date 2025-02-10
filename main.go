@@ -6,7 +6,7 @@ import (
 	"os"
 
 	"github.com/javor454/balancer/internal/balancer"
-	"github.com/javor454/balancer/server"
+	"github.com/javor454/balancer/internal/server"
 )
 
 func main() {
