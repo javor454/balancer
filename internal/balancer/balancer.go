@@ -13,7 +13,7 @@ import (
 // Strategy interface defines the methods that each balancing strategy must implement
 type Strategy interface {
 	RegisterClient() (uuid.UUID, error)
-	ProcessRequest(clientID uuid.UUID) (uuid.UUID, error)
+	RegisterJob(clientID uuid.UUID) (uuid.UUID, error)
 	GetClientStatus(clientID uuid.UUID) (status string, position int, err error)
 	GetJobStatus(jobID uuid.UUID) (status string, err error)
 	Deregister(clientID uuid.UUID) error
@@ -27,7 +27,7 @@ type Balancer struct {
 func NewBalancer(ctx context.Context, config *Config, logger *log.Logger) (*Balancer, error) {
 	switch config.Strategy {
 	case SingleClient:
-		strategy, err := NewSingleClientBalancer(ctx, config.Capacity, logger, config.SessionTimeout.Duration)
+		strategy, err := NewSingleClientBalancer(ctx, config.Capacity, logger, config.SessionTimeout.Duration, config.JobDuration.Duration, config.CleanupInterval.Duration)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create single client balancer: %w", err)
 		}
@@ -38,14 +38,14 @@ func NewBalancer(ctx context.Context, config *Config, logger *log.Logger) (*Bala
 }
 
 func (b *Balancer) RegisterHandlers(mux *http.ServeMux) {
-	mux.HandleFunc("POST /clients", b.handleRegister)
+	mux.HandleFunc("POST /clients", b.handleRegisterClient)
 	mux.HandleFunc("DELETE /clients/{client_id}", b.handleDeregister)
 	mux.HandleFunc("GET /clients/{client_id}", b.handleClientStatus)
 	mux.HandleFunc("GET /jobs/{job_id}", b.handleJobStatus)
-	mux.HandleFunc("POST /clients/{client_id}/requests", b.handleProcess)
+	mux.HandleFunc("POST /clients/{client_id}/jobs", b.handleRegisterJob)
 }
 
-func (b *Balancer) handleRegister(w http.ResponseWriter, r *http.Request) {
+func (b *Balancer) handleRegisterClient(w http.ResponseWriter, r *http.Request) {
 	clientID, err := b.strategy.RegisterClient()
 	if err != nil {
 		b.logger.Printf("Failed to register client: %v", err)
@@ -59,27 +59,31 @@ func (b *Balancer) handleRegister(w http.ResponseWriter, r *http.Request) {
 	}, http.StatusCreated)
 }
 
-func (b *Balancer) handleProcess(w http.ResponseWriter, r *http.Request) {
-	cid := r.PathValue("client_id")
-	if cid == "" {
-		server.WriteError(w, "client ID is required", http.StatusBadRequest)
+func (b *Balancer) handleRegisterJob(w http.ResponseWriter, r *http.Request) {
+	clientID, err := uuid.Parse(r.PathValue("client_id"))
+	if err != nil {
+		b.logger.Printf("Invalid client ID format: %v", err)
+		server.WriteError(w, "Invalid client ID format", http.StatusBadRequest)
 		return
 	}
 
-	clientID, err := uuid.Parse(cid)
+	jobID, err := b.strategy.RegisterJob(clientID)
 	if err != nil {
-		server.WriteError(w, "invalid client ID", http.StatusBadRequest)
-		return
-	}
-
-	jobID, err := b.strategy.ProcessRequest(clientID)
-	if err != nil {
-		server.WriteError(w, err.Error(), http.StatusBadRequest)
+		switch err {
+		case ErrorClientNotActive:
+			server.WriteError(w, "Client is not active or has timed out", http.StatusBadRequest)
+		case ErrorServerAtCapacity:
+			server.WriteError(w, "Server is at capacity", http.StatusServiceUnavailable)
+		default:
+			b.logger.Printf("Failed to register job: %v", err)
+			server.WriteError(w, "Internal server error", http.StatusInternalServerError)
+		}
 		return
 	}
 
 	server.WriteSuccess(w, map[string]string{
-		"job_id": jobID.String(),
+		"job_id":  jobID.String(),
+		"message": "Job registered successfully",
 	}, http.StatusOK)
 }
 

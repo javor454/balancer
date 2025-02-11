@@ -7,8 +7,6 @@ import (
 	"sync"
 	"time"
 
-	"math/rand/v2"
-
 	"github.com/google/uuid"
 )
 
@@ -27,23 +25,35 @@ var (
 )
 
 type SingleClientBalancer struct {
-	capacity       int
-	activeClient   *Client
-	waitingClients []Client // too simple for referencing, more safe to use concurrently
-	jobs           map[uuid.UUID]Job
-	mutex          sync.Mutex
-	sessionTimeout time.Duration
-	logger         *log.Logger
+	capacity        int
+	activeClient    *Client
+	waitingClients  []Client
+	jobs            map[uuid.UUID]Job
+	mutex           sync.Mutex
+	sessionTimeout  time.Duration
+	jobDuration     time.Duration
+	cleanupInterval time.Duration
+	logger          *log.Logger
+	completeJob     func(jobID uuid.UUID)
 }
 
-func NewSingleClientBalancer(ctx context.Context, capacity int, logger *log.Logger, sessionTimeout time.Duration) (*SingleClientBalancer, error) {
+func NewSingleClientBalancer(ctx context.Context, capacity int, logger *log.Logger, sessionTimeout time.Duration, jobDuration time.Duration, cleanupInterval time.Duration) (*SingleClientBalancer, error) {
 	b := &SingleClientBalancer{
-		capacity:       capacity,
-		waitingClients: make([]Client, 0),
-		jobs:           make(map[uuid.UUID]Job, 0),
-		sessionTimeout: sessionTimeout,
-		logger:         logger,
+		capacity:        capacity,
+		waitingClients:  make([]Client, 0),
+		jobs:            make(map[uuid.UUID]Job, 0),
+		sessionTimeout:  sessionTimeout,
+		jobDuration:     jobDuration,
+		cleanupInterval: cleanupInterval,
+		logger:          logger,
 	}
+
+	// Default job completion behavior
+	b.completeJob = func(jobID uuid.UUID) {
+		time.Sleep(jobDuration)
+		b.completeRequest(jobID)
+	}
+
 	logger.Printf("Single-Client balancer created with capacity: %d", capacity)
 
 	go b.cleanupInactiveClients(ctx)
@@ -69,7 +79,7 @@ func (b *SingleClientBalancer) RegisterClient() (uuid.UUID, error) {
 	return client.ID, nil
 }
 
-func (b *SingleClientBalancer) ProcessRequest(clientID uuid.UUID) (uuid.UUID, error) {
+func (b *SingleClientBalancer) RegisterJob(clientID uuid.UUID) (uuid.UUID, error) {
 	b.mutex.Lock()
 	defer b.mutex.Unlock()
 
@@ -77,7 +87,11 @@ func (b *SingleClientBalancer) ProcessRequest(clientID uuid.UUID) (uuid.UUID, er
 		return uuid.Nil, ErrorClientNotActive
 	}
 
-	b.logger.Printf("jobs %v >= cap %d", len(b.jobs), b.capacity)
+	if time.Since(b.activeClient.LastActive) > b.sessionTimeout {
+		b.activateNextClient()
+		return uuid.Nil, ErrorClientNotActive
+	}
+
 	if len(b.jobs) >= b.capacity {
 		return uuid.Nil, ErrorServerAtCapacity
 	}
@@ -92,11 +106,7 @@ func (b *SingleClientBalancer) ProcessRequest(clientID uuid.UUID) (uuid.UUID, er
 
 	b.logger.Printf("Job %s added", jobID)
 
-	go func() {
-		seconds := 5 + time.Duration(rand.Int64N(15)) // Random between 5-20 seconds
-		time.Sleep(seconds * time.Second)
-		b.completeRequest(clientID, jobID)
-	}()
+	go b.completeJob(jobID)
 
 	return jobID, nil
 }
@@ -155,11 +165,9 @@ func (b *SingleClientBalancer) Deregister(clientID uuid.UUID) error {
 	return ErrorClientNotFound
 }
 
-func (b *SingleClientBalancer) completeRequest(clientID uuid.UUID, jobID uuid.UUID) error {
+func (b *SingleClientBalancer) completeRequest(jobID uuid.UUID) error {
 	b.mutex.Lock()
 	defer b.mutex.Unlock()
-
-	b.activeClient.LastActive = time.Now()
 
 	if job, exists := b.jobs[jobID]; exists {
 		job.CompletedAt = time.Now()
@@ -175,23 +183,32 @@ func (b *SingleClientBalancer) completeRequest(clientID uuid.UUID, jobID uuid.UU
 
 func (b *SingleClientBalancer) cleanupInactiveClients(ctx context.Context) {
 	b.logger.Printf("Starting cleanup of inactive clients...")
-	ticker := time.NewTicker(10 * time.Second)
+	ticker := time.NewTicker(b.cleanupInterval)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ctx.Done():
 			b.logger.Printf("Cleanup of inactive clients stopped")
-
 			return
 		case <-ticker.C:
 			b.mutex.Lock()
-			if b.activeClient != nil {
-				if time.Since(b.activeClient.LastActive) > b.sessionTimeout {
-					b.logger.Printf("Client %s timed out", b.activeClient.ID)
-					b.activateNextClient()
+			// Check active client
+			if b.activeClient != nil && time.Since(b.activeClient.LastActive) > b.sessionTimeout {
+				b.logger.Printf("Client %s timed out", b.activeClient.ID)
+				b.activateNextClient()
+			}
+
+			// Check waiting clients
+			var activeClients []Client
+			for _, client := range b.waitingClients {
+				if time.Since(client.LastActive) <= b.sessionTimeout {
+					activeClients = append(activeClients, client)
+				} else {
+					b.logger.Printf("Queued client %s cleaned up", client.ID)
 				}
 			}
+			b.waitingClients = activeClients
 			b.mutex.Unlock()
 		}
 	}
@@ -199,20 +216,21 @@ func (b *SingleClientBalancer) cleanupInactiveClients(ctx context.Context) {
 
 func (b *SingleClientBalancer) cleanupFinishedJobs(ctx context.Context) {
 	b.logger.Printf("Starting cleanup of finished jobs...")
-	ticker := time.NewTicker(10 * time.Second)
+	ticker := time.NewTicker(b.cleanupInterval)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ctx.Done():
 			b.logger.Printf("Cleanup of finished jobs stopped")
-
 			return
 		case <-ticker.C:
 			b.mutex.Lock()
 			for jobID, job := range b.jobs {
-				if time.Since(job.CreatedAt) > b.sessionTimeout {
+				// Only clean up finished jobs that have been completed for a while
+				if !job.CompletedAt.IsZero() && time.Since(job.CompletedAt) > b.sessionTimeout {
 					delete(b.jobs, jobID)
+					b.logger.Printf("Job %s cleaned up", jobID)
 				}
 			}
 			b.mutex.Unlock()

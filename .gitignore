@@ -23,3 +23,7 @@ go.work.sum
 
 # env file
 .env
+
+# Temporary directory
+tmp/
+.DS_Store

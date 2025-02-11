@@ -31,3 +31,4 @@ Serves only one client at a time, other clients are enqueued. As soon as the cli
 - [ ] Add tests
 - [ ] Add visualisation of application state?
 - [ ] Add websockets to get live updates?
+- [ ] Benchmark

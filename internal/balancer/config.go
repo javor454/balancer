@@ -40,6 +40,8 @@ type Config struct {
 	Port            int          `json:"port"`
 	ShutdownTimeout Duration     `json:"shutdown_timeout"`
 	SessionTimeout  Duration     `json:"session_timeout"`
+	JobDuration     Duration     `json:"job_duration"`     // How long jobs take to process
+	CleanupInterval Duration     `json:"cleanup_interval"` // How often to run cleanup
 }
 
 func LoadConfig() (*Config, error) {
@@ -50,6 +52,8 @@ func LoadConfig() (*Config, error) {
 		Port:            8080,
 		ShutdownTimeout: Duration{Duration: 30 * time.Second},
 		SessionTimeout:  Duration{Duration: 1 * time.Minute},
+		JobDuration:     Duration{Duration: 10 * time.Second},
+		CleanupInterval: Duration{Duration: 10 * time.Second},
 	}
 
 	// Try to load from config.json if it exists
