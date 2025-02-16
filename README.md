@@ -18,17 +18,3 @@ A balancer that is processing batches of registered clients and distributing the
 The ultimate, production balancer would run the requests from multiple clients in parallel according to their weights and process the work fairly from all the clients. A client with twice the weight of another client would be allowed to run twice more parallel requests at any given time.
 
 In any case, the balancer must ensure that the number of requests in process at any given time equals the provided limit of the server, aka we never can over-utilise the server, but we also don't want to under-utilise it.
-
-## Single Client Balancer
-Serves only one client at a time, other clients are enqueued. As soon as the client is done, he must deregister himself for the next client in the queue to be served. If there is no client in the queue, the balancer will wait for a client to register. In case the client is not active for 1 minute, he will be deregistered automatically.
-
-# TODOs
-- strategies:
-    - [x] single-client
-    - [ ] round-robin
-    - [ ] batch
-    - [ ] weighted
-- [ ] Add tests
-- [ ] Add visualisation of application state?
-- [ ] Add websockets to get live updates?
-- [ ] Benchmark
