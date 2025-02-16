@@ -31,10 +31,9 @@ type SingleClientBalancer struct {
 	jobs            map[uuid.UUID]Job
 	mutex           sync.Mutex
 	sessionTimeout  time.Duration
-	jobDuration     time.Duration
 	cleanupInterval time.Duration
 	logger          *log.Logger
-	completeJob     func(jobID uuid.UUID)
+	processJobFn    func(jobID uuid.UUID)
 }
 
 func NewSingleClientBalancer(ctx context.Context, capacity int, logger *log.Logger, sessionTimeout time.Duration, jobDuration time.Duration, cleanupInterval time.Duration) (*SingleClientBalancer, error) {
@@ -43,15 +42,13 @@ func NewSingleClientBalancer(ctx context.Context, capacity int, logger *log.Logg
 		waitingClients:  make([]Client, 0),
 		jobs:            make(map[uuid.UUID]Job, 0),
 		sessionTimeout:  sessionTimeout,
-		jobDuration:     jobDuration,
 		cleanupInterval: cleanupInterval,
 		logger:          logger,
 	}
 
-	// Default job completion behavior
-	b.completeJob = func(jobID uuid.UUID) {
+	b.processJobFn = func(jobID uuid.UUID) {
 		time.Sleep(jobDuration)
-		b.completeRequest(jobID)
+		b.processJob(jobID)
 	}
 
 	logger.Printf("Single-Client balancer created with capacity: %d", capacity)
@@ -106,7 +103,7 @@ func (b *SingleClientBalancer) RegisterJob(clientID uuid.UUID) (uuid.UUID, error
 
 	b.logger.Printf("Job %s added", jobID)
 
-	go b.completeJob(jobID)
+	go b.processJobFn(jobID)
 
 	return jobID, nil
 }
@@ -165,7 +162,7 @@ func (b *SingleClientBalancer) Deregister(clientID uuid.UUID) error {
 	return ErrorClientNotFound
 }
 
-func (b *SingleClientBalancer) completeRequest(jobID uuid.UUID) error {
+func (b *SingleClientBalancer) processJob(jobID uuid.UUID) error {
 	b.mutex.Lock()
 	defer b.mutex.Unlock()
 

@@ -22,6 +22,9 @@ In any case, the balancer must ensure that the number of requests in process at 
 ## Single Client Balancer
 Serves only one client at a time, other clients are enqueued. As soon as the client is done, he must deregister himself for the next client in the queue to be served. If there is no client in the queue, the balancer will wait for a client to register. In case the client is not active for 1 minute, he will be deregistered automatically.
 
+## Round Robin Balancer
+Distributes jobs evenly between all registered clients. Keep track of client and their jobs. Handle client timeouts and deregistration. Maintain job status and completion. Respect server capacity limits.
+
 # TODOs
 - strategies:
     - [x] single-client
@@ -32,3 +35,12 @@ Serves only one client at a time, other clients are enqueued. As soon as the cli
 - [ ] Add visualisation of application state?
 - [ ] Add websockets to get live updates?
 - [ ] Benchmark
+
+
+## Round Robin Balancer
+- register client: prida klienta
+- deregister client: odstrani klienta
+- register job: 
+- get job status: ziska status jobu
+- get client status: ziska status klienta
+

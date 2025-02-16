@@ -32,6 +32,12 @@ func NewBalancer(ctx context.Context, config *Config, logger *log.Logger) (*Bala
 			return nil, fmt.Errorf("failed to create single client balancer: %w", err)
 		}
 		return &Balancer{strategy: strategy, logger: logger}, nil
+	case RoundRobin:
+		strategy, err := NewRoundRobinBalancer(ctx, config.Capacity, logger, config.CleanupInterval.Duration, config.JobDuration.Duration)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create round robin balancer: %w", err)
+		}
+		return &Balancer{strategy: strategy, logger: logger}, nil
 	default:
 		return nil, fmt.Errorf("invalid strategy %q", config.Strategy)
 	}
