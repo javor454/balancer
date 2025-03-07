@@ -1,0 +1,89 @@
+---
+version: "3.7"
+
+services:
+    balancer:
+        container_name: balancer
+        init: true
+        build:
+            context: .
+            target: development
+            args:
+                PROJECT_ROOT: "/go/src/github.com/javor454/balancer"
+        restart: unless-stopped
+        depends_on:
+            - wiremock1
+            - wiremock2
+            - wiremock3
+        command: ["sh", "-c", "go build -o ./target/balancer && ./target/balancer"]
+        ports:
+            - "8080:8080"
+        volumes:
+            - ".:/go/src/github.com/javor454/balancer/:cached"
+        networks:
+            - balancer
+        stop_signal: SIGINT
+
+    wiremock1:
+        container_name: wiremock1
+        image: "wiremock/wiremock:3.12.1-1"
+        ports:
+            - "8081:8080"
+        volumes:
+            - .wiremock:/home/wiremock/mappings:ro
+        command:
+            - --disable-banner
+            - --enable-stub-cors
+            - 'on'
+        healthcheck:
+            test: [ "CMD-SHELL", "curl -f http://localhost:8080/__admin/health || exit 1" ]
+            interval: 5s
+            timeout: 3s
+            retries: 3
+            start_period: 5s
+        networks:
+            - balancer
+
+    wiremock2:
+        container_name: wiremock2
+        image: "wiremock/wiremock:3.12.1-1"
+        ports:
+            - "8082:8080"
+        volumes:
+            - .wiremock:/home/wiremock/mappings:ro
+        command:
+            - --disable-banner
+            - --enable-stub-cors
+            - 'on'
+        healthcheck:
+            test: [ "CMD-SHELL", "curl -f http://localhost:8080/__admin/health || exit 1" ]
+            interval: 5s
+            timeout: 3s
+            retries: 3
+            start_period: 5s
+        networks:
+            - balancer
+
+    wiremock3:
+        container_name: wiremock3
+        image: "wiremock/wiremock:3.12.1-1"
+        ports:
+            - "8083:8080"
+        volumes:
+            - .wiremock:/home/wiremock/mappings:ro
+        command:
+            - --disable-banner
+            - --enable-stub-cors
+            - 'on'
+        healthcheck:
+            test: [ "CMD-SHELL", "curl -f http://localhost:8080/__admin/health || exit 1" ]
+            interval: 5s
+            timeout: 3s
+            retries: 3
+            start_period: 5s
+        networks:
+            - balancer
+
+networks:
+    balancer:
+        driver: bridge

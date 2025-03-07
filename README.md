@@ -1,6 +1,16 @@
 # Balancer
 Distributes limited service capacity optimally between several clients based on a distribution strategy.
 
+## Requirements
+- docker
+- docker-compose
+
+## How to run
+1. Start containers with `make up`
+2. Simulate traffic with `make traffic`
+3. Observe logs
+4. Stop containers with `make down`
+
 ## Assignment
 Imagine a standard client-server relationship, only in our case, the server is very fragile (and very expensive). We can't let an arbitrary number of clients smashing the server with arbitrary number of requests, but as it's so expensive to run, we'd like to utilize it as much as possible. And that's why we need a balancer.
 
@@ -18,3 +28,8 @@ A balancer that is processing batches of registered clients and distributing the
 The ultimate, production balancer would run the requests from multiple clients in parallel according to their weights and process the work fairly from all the clients. A client with twice the weight of another client would be allowed to run twice more parallel requests at any given time.
 
 In any case, the balancer must ensure that the number of requests in process at any given time equals the provided limit of the server, aka we never can over-utilise the server, but we also don't want to under-utilise it.
+
+## TODOs
+- abstraction for balancer type?
+- add weights and batch processing
+- add tests

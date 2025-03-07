@@ -27,3 +27,4 @@ go.work.sum
 # Temporary directory
 tmp/
 .DS_Store
+target/

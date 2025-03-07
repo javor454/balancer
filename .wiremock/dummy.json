@@ -1,0 +1,17 @@
+{
+    "request": {
+        "method": "GET",
+        "url": "/dummy"
+    },
+    "response": {
+        "status": 200,
+        "delayDistribution": {
+            "type": "lognormal",
+            "median": 1000,
+            "sigma": 0.4
+        },
+        "headers": {
+            "Content-Type": "application/json"
+        }
+    }
+}
