@@ -17,14 +17,21 @@ var (
 	ErrNoServers        = errors.New("no servers found")
 )
 
+type BalancerType string
+
+const (
+	BalancerTypeRoundRobin BalancerType = "round_robin"
+)
+
 // ProxyServerPool manages a pool of backend servers with health checks
 type ProxyServerPool struct {
 	backends []*server
 	current  int
+	balancer BalancerType // TODO: implement other types
 }
 
 // NewProxyServerPool creates a new pool of proxy servers with health checking
-func NewProxyServerPool(ctx context.Context, urls []string, healthCheckInterval time.Duration, httpClient *http.Client) (*ProxyServerPool, error) {
+func NewProxyServerPool(ctx context.Context, urls []string, healthCheckInterval time.Duration, httpClient *http.Client, balancerType BalancerType) (*ProxyServerPool, error) {
 	servers := make([]*server, 0, len(urls))
 	for _, v := range urls {
 		server, err := newServer(v)
@@ -38,6 +45,7 @@ func NewProxyServerPool(ctx context.Context, urls []string, healthCheckInterval 
 	return &ProxyServerPool{
 		backends: servers,
 		current:  0,
+		balancer: balancerType,
 	}, nil
 }
 

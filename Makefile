@@ -19,6 +19,18 @@ up: ## Build in docker
 down: ## Stop docker
 	docker compose down --volumes --remove-orphans
 
+traffic: ## Simulate some traffic to be balanced
+	curl localhost:8080/dummy & \
+	curl localhost:8080/dummy & \
+	curl localhost:8080/dummy & \
+	curl localhost:8080/dummy & \
+	curl localhost:8080/dummy & \
+	curl localhost:8080/dummy & \
+	curl localhost:8080/dummy & \
+	curl localhost:8080/dummy & \
+	curl localhost:8080/dummy & \
+	curl localhost:8080/dummy &
+
 kill: ## For gracefull shutdown
 	docker kill --signal SIGINT balancer
 

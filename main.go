@@ -8,14 +8,22 @@ import (
 	"github.com/javor454/balancer/server"
 )
 
+type AppConfig struct {
+	BalancerType server.BalancerType
+}
+
 func main() {
+	appConfig := AppConfig{
+		BalancerType: server.BalancerTypeRoundRobin,
+	}
+
 	httpConfig := server.HttpConfig{
 		Port:                8080,
 		ShutdownTimeout:     10 * time.Second,
 		RequestTimeout:      10 * time.Second,
 		Whitelist:           []string{"/dummy"},
 		ProxyServers:        []string{"http://wiremock1:8080", "http://wiremock2:8080", "http://wiremock3:8080"},
-		HealthCheckInterval: 10 * time.Second,
+		HealthCheckInterval: 5 * time.Second,
 	}
 
 	shutdownHandler := server.NewShutdownHandler()
@@ -25,7 +33,7 @@ func main() {
 		Timeout: httpConfig.RequestTimeout,
 	}
 
-	proxyServerPool, err := server.NewProxyServerPool(rootCtx, httpConfig.ProxyServers, httpConfig.HealthCheckInterval, httpClient)
+	proxyServerPool, err := server.NewProxyServerPool(rootCtx, httpConfig.ProxyServers, httpConfig.HealthCheckInterval, httpClient, appConfig.BalancerType)
 	if err != nil {
 		log.Fatalf("Failed to create proxy server pool: %v", err)
 	}
