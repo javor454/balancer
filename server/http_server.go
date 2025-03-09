@@ -6,6 +6,8 @@ import (
 	"log"
 	"net/http"
 	"time"
+
+	"github.com/javor454/balancer/auth"
 )
 
 // HttpServer represents the HTTP server with routing and shutdown capabilities
@@ -47,13 +49,14 @@ func (s *HttpServer) GracefulShutdown() error {
 }
 
 // NewHttpServer creates and configures a new HTTP server instance with logging, panic recovery, and URL whitelisting
-func NewHttpServer(port int, shutdownTimeout time.Duration, whitelist []string, proxyServerPool *ProxyServerPool) *HttpServer {
+func NewHttpServer(port int, shutdownTimeout time.Duration, whitelistedPaths []string, authBlacklistedPaths []string, proxyServerPool *ProxyServerPool, registerHandler *RegisterHandler, authHandler *auth.AuthHandler) *HttpServer {
 	mux := http.NewServeMux()
 
-	registerHealthCheck(mux)
+	mux.HandleFunc("/health", healthHandler)
+	mux.HandleFunc("/register", registerHandler.RegisterHandler)
 	registerProxyServer(mux, proxyServerPool)
 
-	wrappedMux := Chain(WithLogging(), WithPanicRecovery(), WithURLWhitelist(whitelist))(mux)
+	wrappedMux := Chain(WithPanicRecovery(), WithLogging(), WithWhitelistedPaths(whitelistedPaths), WithConditionalAuth(authBlacklistedPaths, authHandler))(mux)
 
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%d", port),
@@ -68,15 +71,16 @@ func NewHttpServer(port int, shutdownTimeout time.Duration, whitelist []string, 
 	return h
 }
 
-// registerHealthCheck adds a health check endpoint
-func registerHealthCheck(mux *http.ServeMux) {
-	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	})
-	log.Print("Health check registered")
+func healthHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
 }
 
-// registerProxyServer configures the proxy server with load balancing
+// registerProxyServer registers the proxy server with load balancing
 func registerProxyServer(mux *http.ServeMux, proxyServerPool *ProxyServerPool) {
 	loadBalancer := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		handler, err := proxyServerPool.NextServer()
@@ -88,11 +92,6 @@ func registerProxyServer(mux *http.ServeMux, proxyServerPool *ProxyServerPool) {
 		handler.ServeHTTP(w, r)
 	})
 
-	// Register the /dummy endpoint specifically
-	// mux.Handle("/dummy", loadBalancer)
-
-	// Also register a catch-all handler for other paths
-	// The whitelist middleware will filter out unwanted paths
 	mux.Handle("/", loadBalancer)
 
 	log.Print("Proxy server registered")
