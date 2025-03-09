@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/javor454/balancer/auth"
 	"github.com/javor454/balancer/server"
 )
 
@@ -18,12 +19,13 @@ func main() {
 	}
 
 	httpConfig := server.HttpConfig{
-		Port:                8080,
-		ShutdownTimeout:     10 * time.Second,
-		RequestTimeout:      10 * time.Second,
-		Whitelist:           []string{"/dummy"},
-		ProxyServers:        []string{"http://wiremock1:8080", "http://wiremock2:8080", "http://wiremock3:8080"},
-		HealthCheckInterval: 5 * time.Second,
+		Port:                 8080,
+		ShutdownTimeout:      10 * time.Second,
+		RequestTimeout:       10 * time.Second,
+		WhitelistedPaths:     []string{"/dummy", "/register", "/health"},
+		AuthBlacklistedPaths: []string{"/register", "/health"},
+		ProxyServers:         []string{"http://wiremock1:8080", "http://wiremock2:8080", "http://wiremock3:8080"},
+		HealthCheckInterval:  5 * time.Second,
 	}
 
 	shutdownHandler := server.NewShutdownHandler()
@@ -38,7 +40,10 @@ func main() {
 		log.Fatalf("Failed to create proxy server pool: %v", err)
 	}
 
-	httpServer := server.NewHttpServer(httpConfig.Port, httpConfig.ShutdownTimeout, httpConfig.Whitelist, proxyServerPool)
+	authHandler := auth.NewAuthHandler()
+	registerHandler := server.NewRegisterHandler(authHandler)
+
+	httpServer := server.NewHttpServer(httpConfig.Port, httpConfig.ShutdownTimeout, httpConfig.WhitelistedPaths, httpConfig.AuthBlacklistedPaths, proxyServerPool, registerHandler, authHandler)
 	httpServerErrChan := httpServer.Start()
 
 	var shutdownErr error

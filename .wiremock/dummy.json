@@ -12,6 +12,11 @@
         },
         "headers": {
             "Content-Type": "application/json"
+        },
+        "transformers": ["response-template"],
+        "body": "{\"name\": \"{{request.headers.Authorization.[0]}}\"}",
+        "jsonBody": {
+            "name": "{{request.headers.Authorization.[0]}}"
         }
     }
 }

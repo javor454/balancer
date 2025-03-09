@@ -6,6 +6,8 @@ import (
 	"log"
 	"net/http"
 	"time"
+
+	"github.com/javor454/balancer/auth"
 )
 
 type Middleware func(http.Handler) http.Handler
@@ -85,22 +87,54 @@ func WithPanicRecovery() Middleware {
 	}
 }
 
-// WithURLWhitelist creates a middleware that only allows requests to whitelisted URLs
-func WithURLWhitelist(whitelist []string) Middleware {
-	// Pre-compile the whitelist into a map for O(1) lookups
-	whitelistMap := make(map[string]struct{}, len(whitelist))
+// WithWhitelistedPaths allows requests only to whitelisted paths
+func WithWhitelistedPaths(whitelist []string) Middleware {
+	whitelistedPathsLookup := make(map[string]struct{}, len(whitelist))
 	for _, path := range whitelist {
-		whitelistMap[path] = struct{}{}
+		whitelistedPathsLookup[path] = struct{}{}
 	}
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Check if the requested path is in whitelist
-			if _, allowed := whitelistMap[r.URL.Path]; !allowed {
-				log.Printf("Blocked request to non-whitelisted URL: %s", r.URL.Path)
+			if _, allowed := whitelistedPathsLookup[r.URL.Path]; !allowed {
+				log.Printf("Blocked request to non-whitelisted path: %s", r.URL.Path)
 				http.Error(w, "Forbidden", http.StatusForbidden)
 				return
 			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// WithConditionalAuth applies auth only to paths that are not in the blacklist
+func WithConditionalAuth(blacklistedPaths []string, authHandler *auth.AuthHandler) Middleware {
+	blacklistedPathsLookup := make(map[string]struct{})
+	for _, path := range blacklistedPaths {
+		blacklistedPathsLookup[path] = struct{}{}
+	}
+
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Skip auth for excluded paths
+			if _, isExcluded := blacklistedPathsLookup[r.URL.Path]; isExcluded {
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			if r.Header.Get("Authorization") == "" {
+				log.Printf("Empty authorization header for path: %s", r.URL.Path)
+				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+				return
+			}
+
+			// Apply auth for all other paths
+			if !authHandler.VerifyRegistered(r.Header.Get("Authorization")) {
+				log.Printf("Unauthorized request to path: %s", r.URL.Path)
+				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+				return
+			}
+
 			next.ServeHTTP(w, r)
 		})
 	}
@@ -147,6 +181,7 @@ func readBody(r *http.Request) (string, error) {
 	return string(body), nil
 }
 
+// sanitizeBody shortens the body to 1000 characters
 func sanitizeBody(body string) string {
 	maxLen := 1000
 	if len(body) == 0 {
