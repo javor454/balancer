@@ -36,7 +36,7 @@ func (h *AuthHandler) VerifyRegistered(name string) bool {
 	return ok
 }
 
-// RegisterClient registers a client
+// RegisterClient dummy implementation of registering a client TODO improve?
 func (h *AuthHandler) RegisterClient(name string, weight int) {
 	h.mu.Lock()
 	defer h.mu.Unlock()

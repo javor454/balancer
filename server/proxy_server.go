@@ -25,13 +25,15 @@ const (
 
 // ProxyServerPool manages a pool of backend servers with health checks
 type ProxyServerPool struct {
-	backends []*server
-	current  int
-	balancer BalancerType // TODO: implement other types
+	servers            []*server
+	currentServerIndex int
+	balancer           BalancerType // TODO: implement other types
+	maxCapacity        int
+	permits            chan struct{}
 }
 
 // NewProxyServerPool creates a new pool of proxy servers with health checking
-func NewProxyServerPool(ctx context.Context, urls []string, healthCheckInterval time.Duration, httpClient *http.Client, balancerType BalancerType) (*ProxyServerPool, error) {
+func NewProxyServerPool(ctx context.Context, urls []string, healthCheckInterval time.Duration, httpClient *http.Client, balancerType BalancerType, maxCapacity int) (*ProxyServerPool, error) {
 	servers := make([]*server, 0, len(urls))
 	for _, v := range urls {
 		server, err := newServer(v)
@@ -43,24 +45,26 @@ func NewProxyServerPool(ctx context.Context, urls []string, healthCheckInterval 
 	}
 
 	return &ProxyServerPool{
-		backends: servers,
-		current:  0,
-		balancer: balancerType,
+		servers:            servers,
+		currentServerIndex: 0,
+		balancer:           balancerType,
+		maxCapacity:        maxCapacity,
+		permits:            make(chan struct{}, maxCapacity),
 	}, nil
 }
 
 // NextServer returns the next available server in a round-robin fashion, in case there are no healthy servers, it returns an error
 func (p *ProxyServerPool) NextServer() (http.Handler, error) {
 	log.Printf("Looking for a healthy server...")
-	sumBackends := len(p.backends)
+	sumBackends := len(p.servers)
 
 	if sumBackends == 0 {
 		return nil, ErrNoServers
 	}
 
 	for range sumBackends * 2 {
-		server := p.backends[p.current]
-		p.current = (p.current + 1) % sumBackends
+		server := p.servers[p.currentServerIndex]
+		p.currentServerIndex = (p.currentServerIndex + 1) % sumBackends
 
 		if server.IsAlive() {
 			log.Printf("Using server %s", server.url.String())
@@ -69,6 +73,14 @@ func (p *ProxyServerPool) NextServer() (http.Handler, error) {
 	}
 
 	return nil, ErrNoHealthyServers
+}
+
+func (p *ProxyServerPool) AcquirePermit() {
+	p.permits <- struct{}{}
+}
+
+func (p *ProxyServerPool) ReleasePermit() {
+	<-p.permits
 }
 
 // server represents a single backend server with health check status
