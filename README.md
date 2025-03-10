@@ -33,3 +33,5 @@ In any case, the balancer must ensure that the number of requests in process at 
 - abstraction for balancer type?
 - add weights and batch processing
 - add tests
+- add logger with levels
+- endpoint to register servers for proxying traffic

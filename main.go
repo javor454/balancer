@@ -40,7 +40,7 @@ func main() {
 		log.Fatalf("Failed to create proxy server pool: %v", err)
 	}
 
-	authHandler := auth.NewAuthHandler()
+	authHandler := auth.NewAuthHandler(rootCtx)
 	registerHandler := server.NewRegisterHandler(authHandler)
 
 	httpServer := server.NewHttpServer(httpConfig.Port, httpConfig.ShutdownTimeout, httpConfig.WhitelistedPaths, httpConfig.AuthBlacklistedPaths, proxyServerPool, registerHandler, authHandler)
