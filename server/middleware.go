@@ -53,7 +53,7 @@ func WithLogging() Middleware {
 			}
 
 			sanitizedReqBody := sanitizeBody(requestBody)
-			sanitizedResBody := sanitizeBody(wrapped.body.String())
+			sanitizedResBody := sanitizeBody(wrapped.body.String()) // why string conversion
 
 			log.Printf(
 				"Method: %s | Path: %s | IP: %s | Status: %d | Duration: %s | Params: %v | UserAgent: %s | RequestBody: %s | ResponseBody: %s",
@@ -183,6 +183,7 @@ func readBody(r *http.Request) (string, error) {
 
 	return string(body), nil
 }
+
 
 // sanitizeBody shortens the body to 1000 characters
 func sanitizeBody(body string) string {

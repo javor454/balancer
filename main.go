@@ -26,12 +26,14 @@ func main() {
 	authHandler := auth.NewAuthHandler(rootCtx)
 	registerHandler := server.NewRegisterHandler(authHandler)
 
+
 	httpServer := server.NewHttpServer(httpConfig.Port, httpConfig.ShutdownTimeout, httpConfig.WhitelistedPaths, httpConfig.AuthBlacklistedPaths, proxyServerPool, registerHandler, authHandler)
 	httpServerErrChan := httpServer.Serve()
 
 	var shutdownErr error
 	select {
 	case err := <-httpServerErrChan:
+		// only one goroutine in this app, why do it so complicated
 		shutdownHandler.SignalShutdown()
 		shutdownErr = err
 	case <-rootCtx.Done():

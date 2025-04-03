@@ -18,3 +18,7 @@ Error Rates: Percentage of 429 (capacity exceeded) responses
 Resource Utilization: CPU, memory, network during peak loads
 Capacity Efficiency: How effectively you utilize your configured capacity
 By implementing these benchmarks, you'll gain valuable insights into your load balancer's performance characteristics and ensure it can reliably handle the expected traffic while maintaining the configured capacity limits.
+
+
+TODOS:
+- check the usage and conversions of string vs byte slice

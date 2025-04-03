@@ -51,6 +51,8 @@ func BenchmarkE2EThroughput(b *testing.B) {
 			}
 
 			handler.ServeHTTP(w, r)
+
+			proxyServerPool.ReleaseCapacity()
 		}))
 
 	defer ts.Close()
