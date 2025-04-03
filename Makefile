@@ -40,5 +40,10 @@ list-registered: ## List registered servers
 kill: ## For gracefull shutdown
 	docker kill --signal SIGINT balancer
 
+bench:
+	@echo "Running load balancer benchmarks..."
+	@go test -bench=. -benchmem -benchtime=5s -timeout=30m ./benchmark/... | tee benchmark/results/benchmark_output.txt
+	@echo "Benchmark results saved to benchmark/results/benchmark_output.txt"
+
 lint: ## Run linting checks
 	./script/golint.sh

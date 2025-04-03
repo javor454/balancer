@@ -89,6 +89,8 @@ func registerProxyServer(mux *http.ServeMux, proxyServerPool *ProxyServerPool) {
 		}
 
 		handler.ServeHTTP(w, r)
+
+		proxyServerPool.ReleaseCapacity()
 	})
 
 	mux.Handle("/", loadBalancer)
