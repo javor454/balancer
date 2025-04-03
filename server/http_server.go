@@ -16,8 +16,39 @@ type HttpServer struct {
 	shutdownTimeout time.Duration
 }
 
-// Start begins listening for HTTP requests and returns an error channel
-func (s *HttpServer) Start() chan error {
+// NewHttpServer creates and configures a new HTTP server instance with logging, panic recovery, and URL whitelisting
+func NewHttpServer(port int, shutdownTimeout time.Duration, whitelistedPaths []string, authBlacklistedPaths []string, proxyServerPool *ProxyServerPool, registerHandler *RegisterHandler, authHandler *auth.AuthHandler) *HttpServer {
+	mux := http.NewServeMux()
+
+	mux.HandleFunc("GET /health", healthHandler(proxyServerPool))
+
+	mux.HandleFunc("GET /register", registerHandler.ListRegisteredClientsHandler)
+	mux.HandleFunc("POST /register", registerHandler.RegisterClientHandler)
+
+	registerProxyServer(mux, proxyServerPool)
+
+	wrappedMux := Chain(
+		WithPanicRecovery(),
+		WithLogging(),
+		WithWhitelistedPaths(whitelistedPaths),
+		WithConditionalAuth(authBlacklistedPaths, authHandler),
+	)(mux)
+
+	srv := &http.Server{
+		Addr:    fmt.Sprintf(":%d", port),
+		Handler: wrappedMux,
+	}
+
+	h := &HttpServer{
+		srv:             srv,
+		shutdownTimeout: shutdownTimeout,
+	}
+
+	return h
+}
+
+// Serve begins listening for HTTP requests and returns an error channel
+func (s *HttpServer) Serve() chan error {
 	serverError := make(chan error, 1)
 
 	go func() {
@@ -48,48 +79,18 @@ func (s *HttpServer) GracefulShutdown() error {
 	return nil
 }
 
-// NewHttpServer creates and configures a new HTTP server instance with logging, panic recovery, and URL whitelisting
-func NewHttpServer(port int, shutdownTimeout time.Duration, whitelistedPaths []string, authBlacklistedPaths []string, proxyServerPool *ProxyServerPool, registerHandler *RegisterHandler, authHandler *auth.AuthHandler) *HttpServer {
-	mux := http.NewServeMux()
-
-	mux.HandleFunc("/health", healthHandler)
-	mux.HandleFunc("/register", registerHandler.RegisterHandler)
-	registerProxyServer(mux, proxyServerPool)
-
-	wrappedMux := Chain(WithPanicRecovery(), WithLogging(), WithWhitelistedPaths(whitelistedPaths), WithConditionalAuth(authBlacklistedPaths, authHandler))(mux)
-
-	srv := &http.Server{
-		Addr:    fmt.Sprintf(":%d", port),
-		Handler: wrappedMux,
-	}
-
-	h := &HttpServer{
-		srv:             srv,
-		shutdownTimeout: shutdownTimeout,
-	}
-
-	return h
-}
-
-func healthHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	w.WriteHeader(http.StatusOK)
-}
-
 // registerProxyServer registers the proxy server with load balancing
 func registerProxyServer(mux *http.ServeMux, proxyServerPool *ProxyServerPool) {
 	loadBalancer := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		handler, err := proxyServerPool.NextServer()
+		handler, err := proxyServerPool.NextServer(r.Context())
 		if err != nil {
 			http.Error(w, "No available backend servers", http.StatusServiceUnavailable)
 			return
 		}
 
 		handler.ServeHTTP(w, r)
+
+		proxyServerPool.ReleaseCapacity()
 	})
 
 	mux.Handle("/", loadBalancer)

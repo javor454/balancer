@@ -22,7 +22,20 @@ func NewRegisterHandler(authHandler *auth.AuthHandler) *RegisterHandler {
 	}
 }
 
-func (h *RegisterHandler) RegisterHandler(w http.ResponseWriter, r *http.Request) {
+func (h *RegisterHandler) ListRegisteredClientsHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	registeredServers := h.authHandler.ListRegisteredClients()
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(registeredServers)
+}
+
+func (h *RegisterHandler) RegisterClientHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -57,5 +70,6 @@ func (h *RegisterHandler) RegisterHandler(w http.ResponseWriter, r *http.Request
 
 	h.authHandler.RegisterClient(req.Name, req.Weight)
 
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 }

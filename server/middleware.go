@@ -53,11 +53,10 @@ func WithLogging() Middleware {
 			}
 
 			sanitizedReqBody := sanitizeBody(requestBody)
-			sanitizedResBody := sanitizeBody(wrapped.body.String())
+			sanitizedResBody := sanitizeBody(wrapped.body.String()) // why string conversion
 
 			log.Printf(
-				"Method: %s | Path: %s | IP: %s | Status: %d | Duration: %s | Params: %v | UserAgent: %s | "+
-					"RequestBody: %s | ResponseBody: %s",
+				"Method: %s | Path: %s | IP: %s | Status: %d | Duration: %s | Params: %v | UserAgent: %s | RequestBody: %s | ResponseBody: %s",
 				r.Method,
 				r.URL.Path,
 				clientIP,
@@ -75,15 +74,17 @@ func WithLogging() Middleware {
 // WithPanicRecovery recovers from panics and logs them
 func WithPanicRecovery() Middleware {
 	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			defer func() {
-				if err := recover(); err != nil {
-					log.Printf("Panic recovered: %v", err)
-					http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-				}
-			}()
-			next.ServeHTTP(w, r)
-		})
+		return http.HandlerFunc(
+			func(w http.ResponseWriter, r *http.Request) {
+				defer func() {
+					if err := recover(); err != nil {
+						log.Printf("Panic recovered: %v", err)
+						http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+					}
+				}()
+				next.ServeHTTP(w, r)
+			},
+		)
 	}
 }
 
@@ -95,19 +96,20 @@ func WithWhitelistedPaths(whitelist []string) Middleware {
 	}
 
 	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Check if the requested path is in whitelist
-			if _, allowed := whitelistedPathsLookup[r.URL.Path]; !allowed {
-				log.Printf("Blocked request to non-whitelisted path: %s", r.URL.Path)
-				http.Error(w, "Forbidden", http.StatusForbidden)
-				return
-			}
-			next.ServeHTTP(w, r)
-		})
+		return http.HandlerFunc(
+			func(w http.ResponseWriter, r *http.Request) {
+				if _, allowed := whitelistedPathsLookup[r.URL.Path]; !allowed {
+					log.Printf("Blocked request to non-whitelisted path: %s", r.URL.Path)
+					http.Error(w, "Forbidden", http.StatusForbidden)
+					return
+				}
+				next.ServeHTTP(w, r)
+			},
+		)
 	}
 }
 
-// WithConditionalAuth applies auth only to paths that are not in the blacklist
+// WithConditionalAuth checks authorization header only to paths that are not in the blacklist
 func WithConditionalAuth(blacklistedPaths []string, authHandler *auth.AuthHandler) Middleware {
 	blacklistedPathsLookup := make(map[string]struct{})
 	for _, path := range blacklistedPaths {
@@ -115,34 +117,35 @@ func WithConditionalAuth(blacklistedPaths []string, authHandler *auth.AuthHandle
 	}
 
 	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Skip auth for excluded paths
-			if _, isExcluded := blacklistedPathsLookup[r.URL.Path]; isExcluded {
+		return http.HandlerFunc(
+			func(w http.ResponseWriter, r *http.Request) {
+				// Skip auth for excluded paths
+				if _, isExcluded := blacklistedPathsLookup[r.URL.Path]; isExcluded {
+					next.ServeHTTP(w, r)
+					return
+				}
+
+				if r.Header.Get("Authorization") == "" {
+					log.Printf("Empty authorization header for path: %s", r.URL.Path)
+					http.Error(w, "Unauthorized", http.StatusUnauthorized)
+					return
+				}
+
+				if !authHandler.VerifyRegistered(r.Header.Get("Authorization")) {
+					log.Printf("Unauthorized request to path: %s", r.URL.Path)
+					http.Error(w, "Unauthorized", http.StatusUnauthorized)
+					return
+				}
+
 				next.ServeHTTP(w, r)
-				return
-			}
-
-			if r.Header.Get("Authorization") == "" {
-				log.Printf("Empty authorization header for path: %s", r.URL.Path)
-				http.Error(w, "Unauthorized", http.StatusUnauthorized)
-				return
-			}
-
-			// Apply auth for all other paths
-			if !authHandler.VerifyRegistered(r.Header.Get("Authorization")) {
-				log.Printf("Unauthorized request to path: %s", r.URL.Path)
-				http.Error(w, "Unauthorized", http.StatusUnauthorized)
-				return
-			}
-
-			next.ServeHTTP(w, r)
-		})
+			},
+		)
 	}
 }
 
 type responseWriter struct {
 	http.ResponseWriter
-	status      int
+	statusCode  int
 	wroteHeader bool
 	body        *bytes.Buffer
 }
@@ -155,12 +158,12 @@ func wrapResponseWriter(w http.ResponseWriter) *responseWriter {
 }
 
 func (rw *responseWriter) Status() int {
-	return rw.status
+	return rw.statusCode
 }
 
 func (rw *responseWriter) WriteHeader(code int) {
 	if !rw.wroteHeader {
-		rw.status = code
+		rw.statusCode = code
 		rw.ResponseWriter.WriteHeader(code)
 		rw.wroteHeader = true
 	}
@@ -180,6 +183,7 @@ func readBody(r *http.Request) (string, error) {
 
 	return string(body), nil
 }
+
 
 // sanitizeBody shortens the body to 1000 characters
 func sanitizeBody(body string) string {
