@@ -36,6 +36,14 @@ func (h *AuthHandler) VerifyRegistered(name string) bool {
 	return ok
 }
 
+// ListRegisteredClients returns a list of registered clients
+func (h *AuthHandler) ListRegisteredClients() map[string]Client {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+
+	return h.clients
+}
+
 // RegisterClient dummy implementation of registering a client TODO improve?
 func (h *AuthHandler) RegisterClient(name string, weight int) {
 	h.mu.Lock()

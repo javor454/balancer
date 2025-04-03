@@ -3,30 +3,13 @@ package main
 import (
 	"log"
 	"net/http"
-	"time"
 
 	"github.com/javor454/balancer/auth"
 	"github.com/javor454/balancer/server"
 )
 
-type AppConfig struct {
-	BalancerType server.BalancerType
-}
-
 func main() {
-	appConfig := AppConfig{
-		BalancerType: server.BalancerTypeRoundRobin,
-	}
-
-	httpConfig := server.HttpConfig{
-		Port:                 8080,
-		ShutdownTimeout:      10 * time.Second,
-		RequestTimeout:       10 * time.Second,
-		WhitelistedPaths:     []string{"/dummy", "/register", "/health"},
-		AuthBlacklistedPaths: []string{"/register", "/health"},
-		ProxyServers:         []string{"http://wiremock1:8080", "http://wiremock2:8080", "http://wiremock3:8080"},
-		HealthCheckInterval:  5 * time.Second,
-	}
+	httpConfig := server.NewDefaultHttpConfig()
 
 	shutdownHandler := server.NewShutdownHandler()
 	rootCtx := shutdownHandler.CreateRootCtxWithShutdown()
@@ -35,7 +18,7 @@ func main() {
 		Timeout: httpConfig.RequestTimeout,
 	}
 
-	proxyServerPool, err := server.NewProxyServerPool(rootCtx, httpConfig.ProxyServers, httpConfig.HealthCheckInterval, httpClient, appConfig.BalancerType)
+	proxyServerPool, err := server.NewProxyServerPool(rootCtx, httpConfig.ProxyServers, httpConfig.HealthCheckInterval, httpClient, httpConfig.MaxCapacity, httpConfig.AcquireCapacityTimeout)
 	if err != nil {
 		log.Fatalf("Failed to create proxy server pool: %v", err)
 	}
@@ -44,7 +27,7 @@ func main() {
 	registerHandler := server.NewRegisterHandler(authHandler)
 
 	httpServer := server.NewHttpServer(httpConfig.Port, httpConfig.ShutdownTimeout, httpConfig.WhitelistedPaths, httpConfig.AuthBlacklistedPaths, proxyServerPool, registerHandler, authHandler)
-	httpServerErrChan := httpServer.Start()
+	httpServerErrChan := httpServer.Serve()
 
 	var shutdownErr error
 	select {
@@ -55,7 +38,6 @@ func main() {
 		log.Print("Received shutdown signal...")
 	}
 
-	// Perform graceful shutdown
 	if err := httpServer.GracefulShutdown(); err != nil {
 		if shutdownErr == nil {
 			shutdownErr = err
