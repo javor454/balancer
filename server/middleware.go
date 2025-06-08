@@ -52,8 +52,8 @@ func WithLogging() Middleware {
 				params["clientID"] = clientID
 			}
 
-			sanitizedReqBody := sanitizeBody(requestBody)
-			sanitizedResBody := sanitizeBody(wrapped.body.String()) // why string conversion
+			sanitizedReqBody := sanitizeBody(string(requestBody))
+			sanitizedResBody := sanitizeBody(wrapped.body.String())
 
 			log.Printf(
 				"Method: %s | Path: %s | IP: %s | Status: %d | Duration: %s | Params: %v | UserAgent: %s | RequestBody: %s | ResponseBody: %s",
@@ -169,21 +169,27 @@ func (rw *responseWriter) WriteHeader(code int) {
 	}
 }
 
-func readBody(r *http.Request) (string, error) {
+// Write captures the response body for logging
+func (rw *responseWriter) Write(data []byte) (int, error) {
+	rw.body.Write(data)
+	return rw.ResponseWriter.Write(data)
+}
+
+func readBody(r *http.Request) ([]byte, error) {
 	if r.Body == nil {
-		return "", nil
+		return nil, nil
 	}
 
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
+	// replace body so it can be read again later for logging
 	r.Body = io.NopCloser(bytes.NewBuffer(body))
 
-	return string(body), nil
+	return body, nil
 }
-
 
 // sanitizeBody shortens the body to 1000 characters
 func sanitizeBody(body string) string {

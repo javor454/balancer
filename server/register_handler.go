@@ -48,7 +48,7 @@ func (h *RegisterHandler) RegisterClientHandler(w http.ResponseWriter, r *http.R
 	}
 
 	var req RegisterRequest
-	if err := json.Unmarshal([]byte(body), &req); err != nil {
+	if err := json.Unmarshal(body, &req); err != nil {
 		http.Error(w, "Failed to unmarshal request body", http.StatusBadRequest)
 		return
 	}
