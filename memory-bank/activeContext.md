@@ -44,11 +44,6 @@
 - **JSON Processing**: Eliminated unnecessary string→[]byte conversions
 - **Buffer Operations**: Using Bytes() instead of String() method where possible
 
-## Performance Metrics (Benchmark Results)
-- **JSON Unmarshalling**: 4% faster, 16% fewer allocations with direct byte slices
-- **Buffer Access**: 43x faster (0.28ns vs 12ns), zero allocations with Bytes()
-- **Memory Efficiency**: Reduced string conversions throughout the request pipeline
-
 ## Architecture Decisions Needed
 - Balancer strategy abstraction design
 - Weighted client implementation approach

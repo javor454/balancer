@@ -48,7 +48,7 @@ func NewProxyServerPool(ctx context.Context, urls []string, healthCheckInterval 
 	}, nil
 }
 
-// NextServer returns the next available server in a round-robin fashion, in case there are no healthy servers, it returns an error
+// NextServer iterate through servers maximum of 2 times to find available server in round-robin fashion, in case there are no healthy servers, it returns an error
 func (p *ProxyServerPool) NextServer(ctx context.Context) (http.Handler, error) {
 	if err := p.AcquireCapacityWithTimeout(ctx, p.acquireCapacityTimeout); err != nil {
 		return nil, err
@@ -74,7 +74,7 @@ func (p *ProxyServerPool) NextServer(ctx context.Context) (http.Handler, error) 
 	return nil, ErrNoHealthyServers
 }
 
-// AcquireCapacityWithTimeout attempts to acquire a token from the capacity channel with a timeout
+// AcquireCapacityWithTimeout attempts to acquire a slot in the capacity channel to prevent overloading the server, in case the capacity is full, it blocks until a slot is available or the timeout is reached
 func (p *ProxyServerPool) AcquireCapacityWithTimeout(ctx context.Context, timeout time.Duration) error {
 	timeoutCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
@@ -87,6 +87,7 @@ func (p *ProxyServerPool) AcquireCapacityWithTimeout(ctx context.Context, timeou
 	}
 }
 
+// ReleaseCapacity releases a slot in the capacity channel to allow more requests to be processed
 func (p *ProxyServerPool) ReleaseCapacity() {
 	select {
 	case <-p.capacity:

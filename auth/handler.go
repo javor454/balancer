@@ -71,6 +71,7 @@ func (h *AuthHandler) cleanupClients(ctx context.Context) {
 		case <-ticker.C:
 			h.mu.Lock()
 			for name, client := range h.clients {
+				// TODO: delete based on activity rather than registration time?
 				if time.Since(client.RegisteredAt) > 5*time.Minute {
 					log.Printf("Cleaning up client %s", name)
 					delete(h.clients, name)
