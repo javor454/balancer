@@ -127,20 +127,28 @@ func (s *WeightedStrategy) acquireFromSpillover(ctx context.Context, timeout tim
 }
 
 // ReleaseCapacity releases acquired capacity back to the appropriate pool
+// NOTE: Current implementation doesn't track which pool was originally used,
+// so it releases to whichever pool is available. This is a simplification that
+// works for basic functionality but doesn't provide perfect fairness.
+// TODO: Implement proper capacity tracking (see Option 1 in activeContext.md)
 func (s *WeightedStrategy) ReleaseCapacity() {
-	// For simplicity, release to spillover pool
-	// In a more sophisticated implementation, we could track which pool was used
+	// For simplicity, release to spillover pool first
 	select {
 	case <-s.spilloverPool:
 		log.Printf("Released capacity to spillover pool")
 	default:
 		// If spillover is empty, try to release from client quotas
-		s.releaseFromClientQuotas()
+		if s.releaseFromClientQuotas() {
+			// Successfully released from client quota
+		} else {
+			log.Printf("Warning: Could not release capacity - no pools available")
+		}
 	}
 }
 
 // releaseFromClientQuotas attempts to release capacity from client quotas
-func (s *WeightedStrategy) releaseFromClientQuotas() {
+// Returns true if capacity was successfully released, false otherwise
+func (s *WeightedStrategy) releaseFromClientQuotas() bool {
 	s.quotaMutex.RLock()
 	defer s.quotaMutex.RUnlock()
 
@@ -148,11 +156,12 @@ func (s *WeightedStrategy) releaseFromClientQuotas() {
 		select {
 		case <-quota:
 			log.Printf("Released capacity from client quota for %s", clientName)
-			return
+			return true
 		default:
 			continue
 		}
 	}
+	return false
 }
 
 // GetMaxCapacity returns the maximum system capacity

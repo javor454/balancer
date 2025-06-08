@@ -230,3 +230,71 @@ func TestWeightedStrategy_ConcurrencySafeQuotaRecalculation(t *testing.T) {
 	strategy.ReleaseCapacity() // client1's slot
 	strategy.ReleaseCapacity() // client1's slot
 }
+
+func TestWeightedStrategy_BasicCapacityPreservation(t *testing.T) {
+	ctx := context.Background()
+	authHandler := auth.NewAuthHandler(ctx)
+
+	// Register initial client with low weight
+	authHandler.RegisterClient("lowPriorityClient", 1)
+
+	servers := []*server{}
+	maxCapacity := 3
+	timeout := 100 * time.Millisecond
+
+	strategy := NewWeightedStrategy(ctx, servers, maxCapacity, timeout, authHandler)
+	strategy.RecalculateQuotas()
+
+	// LowPriorityClient gets full capacity initially (quota=3)
+	strategy.quotaMutex.RLock()
+	initialQuota := strategy.quotaAllocated["lowPriorityClient"]
+	strategy.quotaMutex.RUnlock()
+	assert.Equal(t, 3, initialQuota, "Low priority client should get full capacity initially")
+
+	// LowPriorityClient acquires all 3 slots
+	clientCtx := WithClientContext(context.Background(), "lowPriorityClient")
+	for i := 0; i < 3; i++ {
+		err := strategy.AcquireCapacity(clientCtx, timeout)
+		require.NoError(t, err, "Should acquire capacity slot %d", i+1)
+	}
+
+	// Register high priority client
+	authHandler.RegisterClient("highPriorityClient", 4) // Much higher weight
+
+	// Trigger quota recalculation - this will preserve lowPriorityClient's usage
+	strategy.RecalculateQuotas()
+
+	strategy.quotaMutex.RLock()
+	lowQuotaAfterRecalc := strategy.quotaAllocated["lowPriorityClient"]
+	highQuotaAfterRecalc := strategy.quotaAllocated["highPriorityClient"]
+	lowUsageAfterRecalc := len(strategy.clientQuotas["lowPriorityClient"])
+	strategy.quotaMutex.RUnlock()
+
+	// Quotas should be adjusted but low priority client's usage preserved
+	assert.Equal(t, 3, lowQuotaAfterRecalc, "Low priority quota preserved due to current usage")
+	assert.Equal(t, 1, highQuotaAfterRecalc, "High priority gets minimum quota of 1")
+	assert.Equal(t, 3, lowUsageAfterRecalc, "Low priority still using all 3 slots")
+
+	// Release capacity (without automatic rebalancing)
+	strategy.ReleaseCapacity()
+
+	// Verify that quota structure remains stable (no automatic rebalancing)
+	strategy.quotaMutex.RLock()
+	lowQuotaAfterRelease := strategy.quotaAllocated["lowPriorityClient"]
+	highQuotaAfterRelease := strategy.quotaAllocated["highPriorityClient"]
+	strategy.quotaMutex.RUnlock()
+
+	// Quotas should remain the same after release (no automatic rebalancing)
+	assert.Equal(t, lowQuotaAfterRecalc, lowQuotaAfterRelease, "Low priority quota should remain stable")
+	assert.Equal(t, highQuotaAfterRecalc, highQuotaAfterRelease, "High priority quota should remain stable")
+
+	// High priority client should be able to acquire capacity from their quota or spillover
+	highClientCtx := WithClientContext(context.Background(), "highPriorityClient")
+	err := strategy.AcquireCapacity(highClientCtx, timeout)
+	assert.NoError(t, err, "High priority client should be able to acquire capacity")
+
+	// Clean up
+	strategy.ReleaseCapacity() // high priority slot
+	strategy.ReleaseCapacity() // remaining slots
+	strategy.ReleaseCapacity()
+}

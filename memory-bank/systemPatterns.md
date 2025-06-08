@@ -7,11 +7,26 @@
 
 ## Core Components
 
-### ProxyServerPool
+### ProxyServerPool  
+- **Pattern**: Strategy pattern for pluggable balancing algorithms
+- **Implementation**: Delegates capacity management to BalancingStrategy interface
+- **Strategies**: RoundRobinStrategy (semaphore) and WeightedStrategy (per-client quotas)
+- **Behavior**: Strategy-specific capacity control and backend selection
+
+### Balancing Strategies
+
+#### RoundRobinStrategy
 - **Pattern**: Semaphore-based capacity control
 - **Implementation**: Buffered channel (`make(chan struct{}, maxCapacity)`)
-- **Behavior**: Blocks requests when capacity exhausted
 - **Distribution**: Round-robin with health-aware selection
+- **Use Case**: Simple equal distribution among all clients
+
+#### WeightedStrategy  
+- **Pattern**: Per-client quota management with spillover pool
+- **Implementation**: Map of client-specific buffered channels + shared spillover
+- **Distribution**: Proportional to client weights with fair spillover access
+- **Quota Formula**: `(clientWeight / totalActiveWeights) * totalCapacity`
+- **Features**: Event-driven recalculation, concurrency-safe updates, usage preservation
 
 ### Health Checking
 - **Pattern**: Continuous background monitoring
@@ -20,19 +35,23 @@
 - **Recovery**: Automatic when health checks pass
 
 ### Request Flow
-1. Client registration via `/register`
-2. Authentication check (except whitelisted paths)
-3. Capacity acquisition with timeout
-4. Backend selection (round-robin + health)
-5. Reverse proxy to backend
-6. Capacity release on completion
+1. Client registration via `/register` (captures weight for weighted strategy)
+2. Authentication check (except whitelisted paths)  
+3. Client identification injection into request context
+4. Strategy-specific capacity acquisition with timeout
+5. Backend selection (strategy-dependent: round-robin or weighted)
+6. Reverse proxy to backend
+7. Strategy-specific capacity release on completion
 
 ## Design Decisions
 
 ### Capacity Management
-- **Semaphore over Rate Limiting**: Protects backend from overload
-- **System-wide vs Per-Backend**: Single capacity pool for simplicity
-- **Timeout Strategy**: Fail fast when capacity unavailable
+- **Strategy Pattern**: Pluggable algorithms (RoundRobin vs Weighted)
+- **RoundRobin**: System-wide semaphore for simplicity and equal distribution
+- **Weighted**: Per-client quotas + spillover pool for proportional fairness
+- **Event-Driven Recalculation**: Quota updates on client registration changes
+- **Concurrency Safety**: Preserves current usage during quota transitions
+- **Timeout Strategy**: Fail fast when capacity unavailable (both strategies)
 
 ### Backend Selection
 - **Round-robin over Random**: Predictable load distribution
