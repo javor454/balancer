@@ -81,19 +81,8 @@ func (s *HttpServer) GracefulShutdown() error {
 
 // registerProxyServer registers the proxy server with load balancing
 func registerProxyServer(mux *http.ServeMux, proxyServerPool *ProxyServerPool) {
-	loadBalancer := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		handler, err := proxyServerPool.NextServer(r.Context())
-		if err != nil {
-			http.Error(w, "No available backend servers", http.StatusServiceUnavailable)
-			return
-		}
-
-		handler.ServeHTTP(w, r)
-
-		proxyServerPool.ReleaseCapacity()
-	})
-
-	mux.Handle("/", loadBalancer)
+	// ProxyServerPool now implements http.Handler directly
+	mux.Handle("/", proxyServerPool)
 
 	log.Print("Proxy server registered")
 }

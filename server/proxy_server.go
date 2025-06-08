@@ -20,11 +20,7 @@ var (
 
 // ProxyServerPool manages a pool of backend servers with health checks
 type ProxyServerPool struct {
-	servers                []*server
-	currentServerIndex     int
-	maxCapacity            int
-	capacity               chan struct{}
-	acquireCapacityTimeout time.Duration
+	strategy BalancingStrategy
 }
 
 // NewProxyServerPool creates a new pool of proxy servers with health checking
@@ -39,70 +35,35 @@ func NewProxyServerPool(ctx context.Context, urls []string, healthCheckInterval 
 		servers = append(servers, server)
 	}
 
+	// Use RoundRobin strategy by default
+	strategy := NewRoundRobinStrategy(servers, maxCapacity, acquireCapacityTimeout)
+
 	return &ProxyServerPool{
-		servers:                servers,
-		currentServerIndex:     0,
-		maxCapacity:            maxCapacity,
-		capacity:               make(chan struct{}, maxCapacity),
-		acquireCapacityTimeout: acquireCapacityTimeout,
+		strategy: strategy,
 	}, nil
 }
 
-// NextServer iterate through servers maximum of 2 times to find available server in round-robin fashion, in case there are no healthy servers, it returns an error
-func (p *ProxyServerPool) NextServer(ctx context.Context) (http.Handler, error) {
-	if err := p.AcquireCapacityWithTimeout(ctx, p.acquireCapacityTimeout); err != nil {
-		return nil, err
+// ServeHTTP implements http.Handler for the proxy server pool
+func (p *ProxyServerPool) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	handler, err := p.strategy.NextServer(r.Context())
+	if err != nil {
+		http.Error(w, "No available backend servers", http.StatusServiceUnavailable)
+		return
 	}
 
-	log.Printf("Looking for a healthy server...")
-	sumBackends := len(p.servers)
+	handler.ServeHTTP(w, r)
 
-	if sumBackends == 0 {
-		return nil, ErrNoServers
-	}
-
-	for range sumBackends * 2 {
-		server := p.servers[p.currentServerIndex]
-		p.currentServerIndex = (p.currentServerIndex + 1) % sumBackends
-
-		if server.IsAlive() {
-			log.Printf("Using server %s", server.url.String())
-			return server.reverseProxy, nil
-		}
-	}
-
-	return nil, ErrNoHealthyServers
+	p.strategy.ReleaseCapacity()
 }
 
-// AcquireCapacityWithTimeout attempts to acquire a slot in the capacity channel to prevent overloading the server, in case the capacity is full, it blocks until a slot is available or the timeout is reached
-func (p *ProxyServerPool) AcquireCapacityWithTimeout(ctx context.Context, timeout time.Duration) error {
-	timeoutCtx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-
-	select {
-	case p.capacity <- struct{}{}: // Try to acquire a token
-		return nil
-	case <-timeoutCtx.Done():
-		return ErrNoCapacity // Timeout without acquiring a token
-	}
-}
-
-// ReleaseCapacity releases a slot in the capacity channel to allow more requests to be processed
-func (p *ProxyServerPool) ReleaseCapacity() {
-	select {
-	case <-p.capacity:
-	default: // prevents panics if ReleaseCapacity is called more times than AcquireCapacity
-	}
-}
-
-// GetMaxCapacity returns the maximum server capacity
+// GetMaxCapacity returns the maximum capacity from the strategy
 func (p *ProxyServerPool) GetMaxCapacity() int {
-	return p.maxCapacity
+	return p.strategy.GetMaxCapacity()
 }
 
-// GetAvailableCapacity returns the available server capacity
+// GetAvailableCapacity returns the available capacity from the strategy
 func (p *ProxyServerPool) GetAvailableCapacity() int {
-	return p.maxCapacity - len(p.capacity)
+	return p.strategy.GetAvailableCapacity()
 }
 
 // server represents a single backend server with health check status

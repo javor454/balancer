@@ -42,18 +42,7 @@ func BenchmarkE2EThroughput(b *testing.B) {
 		b.Fatalf("Failed to create proxy server pool: %v", err)
 	}
 
-	ts := httptest.NewServer(
-		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			handler, err := proxyServerPool.NextServer(r.Context())
-			if err != nil {
-				http.Error(w, "No available backend servers", http.StatusServiceUnavailable)
-				return
-			}
-
-			handler.ServeHTTP(w, r)
-
-			proxyServerPool.ReleaseCapacity()
-		}))
+	ts := httptest.NewServer(proxyServerPool)
 
 	defer ts.Close()
 
