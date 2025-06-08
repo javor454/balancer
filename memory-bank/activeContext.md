@@ -15,6 +15,12 @@
 - **BalancingStrategy interface with clean separation of concerns**
 - **RoundRobinStrategy extraction maintaining backward compatibility**
 - **ProxyServerPool refactor to use strategy pattern delegation**
+- **WeightedStrategy with per-client capacity quotas and spillover pool**
+- **Client identification enhancement with context injection**
+- **Comprehensive unit tests for weighted distribution logic**
+- **Event-driven quota recalculation (instead of periodic timer)**
+- **Concurrency-safe quota updates preserving current usage**
+- **Capacity overflow prevention during quota recalculation**
 
 ## Current Focus Areas
 1. **🎯 Weighted Distribution Implementation**: Main priority - fair capacity allocation based on client weights
@@ -37,7 +43,7 @@
 ## Next Priorities
 1. **✅ Strategy Interface Design**: Define BalancingStrategy interface - COMPLETED
 2. **✅ Extract Round-Robin**: Move existing logic to RoundRobinStrategy - COMPLETED
-3. **⚖️ Implement Weighted**: Build proportional capacity allocation system
+3. **✅ Implement Weighted**: Build proportional capacity allocation system - COMPLETED
 4. **🔗 Integration**: Wire strategies into main application flow
 5. **🧪 Validation**: Test weighted distribution fairness
 
@@ -48,9 +54,11 @@
 - **Client Tracking**: Use existing auth.Client with weight field
 
 ## Technical Debt
-- Need to extract balancing logic from ProxyServerPool
-- Client identification mechanism needs implementation
-- Comprehensive testing for weighted scenarios needed
+- ✅ ~~Need to extract balancing logic from ProxyServerPool~~ - COMPLETED
+- ✅ ~~Client identification mechanism needs implementation~~ - COMPLETED  
+- ✅ ~~Comprehensive testing for weighted scenarios needed~~ - COMPLETED
+- Need event hooks for client registration/deregistration in AuthHandler
+- Strategy selection configuration in main application flow
 - Memory bank documentation requires updates post-implementation
 
 ## Current Focus Areas

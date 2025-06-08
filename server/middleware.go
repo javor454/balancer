@@ -125,17 +125,22 @@ func WithConditionalAuth(blacklistedPaths []string, authHandler *auth.AuthHandle
 					return
 				}
 
-				if r.Header.Get("Authorization") == "" {
+				clientName := r.Header.Get("Authorization")
+				if clientName == "" {
 					log.Printf("Empty authorization header for path: %s", r.URL.Path)
 					http.Error(w, "Unauthorized", http.StatusUnauthorized)
 					return
 				}
 
-				if !authHandler.VerifyRegistered(r.Header.Get("Authorization")) {
+				if !authHandler.VerifyRegistered(clientName) {
 					log.Printf("Unauthorized request to path: %s", r.URL.Path)
 					http.Error(w, "Unauthorized", http.StatusUnauthorized)
 					return
 				}
+
+				// Add client information to request context
+				ctx := WithClientContext(r.Context(), clientName)
+				r = r.WithContext(ctx)
 
 				next.ServeHTTP(w, r)
 			},

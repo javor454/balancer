@@ -37,6 +37,7 @@ func (s *RoundRobinStrategy) NextServer(ctx context.Context) (http.Handler, erro
 	sumBackends := len(s.servers)
 
 	if sumBackends == 0 {
+		s.ReleaseCapacity()
 		return nil, ErrNoServers
 	}
 
@@ -50,6 +51,7 @@ func (s *RoundRobinStrategy) NextServer(ctx context.Context) (http.Handler, erro
 		}
 	}
 
+	s.ReleaseCapacity()
 	return nil, ErrNoHealthyServers
 }
 

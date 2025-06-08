@@ -31,7 +31,9 @@ func NewProxyServerPool(ctx context.Context, urls []string, healthCheckInterval 
 		if err != nil {
 			return nil, err
 		}
-		server.startHealthCheck(ctx, healthCheckInterval, httpClient)
+
+		go server.periodicHealthCheck(ctx, healthCheckInterval, httpClient)
+
 		servers = append(servers, server)
 	}
 
@@ -47,7 +49,16 @@ func NewProxyServerPool(ctx context.Context, urls []string, healthCheckInterval 
 func (p *ProxyServerPool) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	handler, err := p.strategy.NextServer(r.Context())
 	if err != nil {
-		http.Error(w, "No available backend servers", http.StatusServiceUnavailable)
+		switch err {
+		case ErrNoHealthyServers:
+			http.Error(w, "No available backend servers", http.StatusServiceUnavailable)
+		case ErrNoServers:
+			http.Error(w, "No servers found", http.StatusServiceUnavailable)
+		case ErrNoCapacity:
+			http.Error(w, "No capacity available", http.StatusServiceUnavailable)
+		default:
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+		}
 		return
 	}
 
@@ -92,32 +103,30 @@ func newServer(rawUrl string) (*server, error) {
 	return &server{url: parsedUrl, alive: alive, reverseProxy: reverseProxy}, nil
 }
 
-// startHealthCheck begins periodic health checking of the server
-func (s *server) startHealthCheck(ctx context.Context, healthCheckInterval time.Duration, httpClient *http.Client) {
+// periodicHealthCheck begins periodic health checking of the server
+func (s *server) periodicHealthCheck(ctx context.Context, healthCheckInterval time.Duration, httpClient *http.Client) {
 	url := fmt.Sprintf("%s/health", s.url.String())
 
-	go func() {
-		log.Printf("Starting health check for %s", s.url.String())
-		ticker := time.NewTicker(healthCheckInterval)
-		defer ticker.Stop()
+	log.Printf("Starting health check for %s", s.url.String())
+	ticker := time.NewTicker(healthCheckInterval)
+	defer ticker.Stop()
 
-		for {
-			select {
-			case <-ctx.Done():
-				log.Printf("Health check for %s stopped", s.url.String())
-				return
-			case <-ticker.C:
-				resp, err := httpClient.Get(url)
-				if err != nil || resp.StatusCode != http.StatusOK {
-					log.Printf("Health check failed for %s", url)
-					s.alive.Store(false)
-				} else {
-					log.Printf("Health check passed for %s", url)
-					s.alive.Store(true)
-				}
+	for {
+		select {
+		case <-ctx.Done():
+			log.Printf("Health check for %s stopped", s.url.String())
+			return
+		case <-ticker.C:
+			resp, err := httpClient.Get(url)
+			if err != nil || resp.StatusCode != http.StatusOK {
+				log.Printf("Health check failed for %s", url)
+				s.alive.Store(false)
+			} else {
+				log.Printf("Health check passed for %s", url)
+				s.alive.Store(true)
 			}
 		}
-	}()
+	}
 }
 
 // IsAlive returns whether the server is currently considered healthy

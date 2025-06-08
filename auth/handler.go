@@ -22,7 +22,7 @@ func NewAuthHandler(ctx context.Context) *AuthHandler {
 	h := &AuthHandler{
 		clients: make(map[string]Client),
 	}
-	go h.cleanupClients(ctx)
+	go h.periodicClientCleanup(ctx)
 
 	return h
 }
@@ -57,8 +57,8 @@ func (h *AuthHandler) RegisterClient(name string, weight int) {
 	log.Printf("Registered client \"%s\" with weight %d", name, weight)
 }
 
-// cleanupClients cleans up clients that have been registered for more than 5 minutes every 5 seconds
-func (h *AuthHandler) cleanupClients(ctx context.Context) {
+// periodicClientCleanup cleans up clients that have been registered for more than 5 minutes every 5 seconds
+func (h *AuthHandler) periodicClientCleanup(ctx context.Context) {
 	log.Println("Starting cleanup of clients")
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
